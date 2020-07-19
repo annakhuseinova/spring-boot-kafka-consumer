@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class LibraryEventsConsumerManualAcknowledgement implements AcknowledgingMessageListener<Integer, String> {
 
-
+    // Обязательно указать к какой группе относится консьюмер
     @Override
-    @KafkaListener(topics = {"libraryEvents"})
+    @KafkaListener(topics = {"libraryEvents"}, groupId = "library-events-listener-group")
     public void onMessage(ConsumerRecord<Integer, String> data, Acknowledgment acknowledgment) {
         log.info("Consumer Record: {}", data);
         // Means to say that we have successfully processed the message.
