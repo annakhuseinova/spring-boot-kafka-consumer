@@ -1,11 +1,17 @@
 spring:
   profiles: local
   kafka:
+    template:
+      default-topic: libraryEvents
     consumer:
       bootstrap-servers: localhost:9092, localhost:9093, localhost:9094
       key-deserializer: org.apache.kafka.serialization.IntegerDeserializer
       value-deserializer: org.apache.kafka.serialization.StringDeserializer
-      group-id: library-events-listener-group
+      group-id:
+    producer:
+      bootstrap-servers: localhost:9092, localhost:9093, localhost:9094
+      key-serializer: org.apache.kafka.serialization.IntegerDeserializer
+      value-serializer: org.apache.kafka.serialization.StringDeserializer
     listener:
       ack-mode: MANUAL
       concurrency: 3
@@ -19,7 +25,6 @@ spring:
   h2:
     console:
       enabled: true
-
 ---
 server:
   port: 8081
