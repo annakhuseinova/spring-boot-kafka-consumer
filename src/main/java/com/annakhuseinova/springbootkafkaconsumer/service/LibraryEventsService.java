@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -22,6 +23,10 @@ public class LibraryEventsService {
     public void processLibrary(ConsumerRecord<Integer, String> consumerRecord) throws JsonProcessingException {
         LibraryEvent libraryEvent = objectMapper.readValue(consumerRecord.value(), LibraryEvent.class);
         log.info("libraryEvent: {}", libraryEvent);
+
+        if (libraryEvent.getLibraryEventId() != null && libraryEvent.getLibraryEventId() == 0){
+            throw new RecoverableDataAccessException("Temporary Network Issue");
+        }
         switch (libraryEvent.getLibraryEventType()){
             case NEW:
                 save(libraryEvent);
@@ -45,7 +50,6 @@ public class LibraryEventsService {
         }
         log.info("Validation is successful for the library event : {}", libraryEventsOptional.get());
     }
-
 
     private void save(LibraryEvent libraryEvent) {
         libraryEvent.getBook().setLibraryEvent(libraryEvent);

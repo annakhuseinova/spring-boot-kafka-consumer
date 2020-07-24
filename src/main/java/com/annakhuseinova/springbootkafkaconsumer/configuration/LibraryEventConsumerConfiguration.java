@@ -5,6 +5,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.config.KafkaListenerContainerFactory;
@@ -12,7 +13,12 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
+import org.springframework.retry.RetryPolicy;
+import org.springframework.retry.backoff.FixedBackOffPolicy;
+import org.springframework.retry.policy.SimpleRetryPolicy;
+import org.springframework.retry.support.RetryTemplate;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -39,7 +45,48 @@ public class LibraryEventConsumerConfiguration {
         factory.setErrorHandler(((thrownException, data) -> {
             log.info("Exception in consumerConfig is {} and the record is {}", thrownException.getMessage(), data);
         }));
+        factory.setRetryTemplate(retryTemplate());
+        factory.setRecoveryCallback(context -> {
+            if (context.getLastThrowable().getCause() instanceof RecoverableDataAccessException){
+                log.debug("Inside recoverable logic");
+                Arrays.asList(context.attributeNames()).forEach(attributeName -> {
+                    log.info("Attribute name is :  {}", attributeName);
+                    log.info("Attribute Value is P{", context.getAttribute(attributeName));
+                });
+            }else {
+                log.debug("Inside non-recoverable logic");
+                throw new RuntimeException(context.getLastThrowable().getMessage());
+            }
+            return null;
+        });
         return factory;
+    }
+
+    // Back off - period after each retry
+    // Для retries устанавливаем простую retry policy, которая лишь трижды пытается обработать сообщение.
+    private RetryTemplate retryTemplate() {
+
+        // Default is 1000 milliseconds
+        FixedBackOffPolicy fixedBackOffPolicy = new FixedBackOffPolicy();
+        fixedBackOffPolicy.setBackOffPeriod(1000);
+        RetryTemplate retryTemplate = new RetryTemplate();
+        retryTemplate.setRetryPolicy(simpleRetryPolicy());
+        retryTemplate.setBackOffPolicy(fixedBackOffPolicy);
+        return retryTemplate;
+    }
+    // Первый вариант - создание простой логики, где при ошибке consumer пытается 3 раза повторить получение сообщения.
+    // Второй вариант - retry policy отрабатывает при выбросе определенного типа исключения. Вторым параметром
+    // SimpleRetryPolicy конструктора передаем словарь исключений, на которые хотим и не хотим вызывать Retry Policy.
+    private RetryPolicy simpleRetryPolicy() {
+
+        Map<Class<? extends Throwable>, Boolean> exceptionMap = new HashMap<>();
+        exceptionMap.put(IllegalArgumentException.class, false);
+        exceptionMap.put(RecoverableDataAccessException.class, true);
+        SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy(3, exceptionMap, true);
+//
+//        SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy();
+//        simpleRetryPolicy.setMaxAttempts(3);
+        return simpleRetryPolicy;
     }
 
     @Bean
