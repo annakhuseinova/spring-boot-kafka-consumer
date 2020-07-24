@@ -1,7 +1,10 @@
 package com.annakhuseinova.springbootkafkaconsumer.configuration;
 
+import com.annakhuseinova.springbootkafkaconsumer.service.LibraryEventsService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,7 +30,10 @@ import java.util.Map;
 @Configuration
 @EnableKafka
 @Slf4j
+@RequiredArgsConstructor
 public class LibraryEventConsumerConfiguration {
+
+    private final LibraryEventsService libraryEventsService;
 
     @Value("${spring.kafka.consumer.bootstrap-servers}")
     private String bootstrapServers;
@@ -46,12 +52,18 @@ public class LibraryEventConsumerConfiguration {
             log.info("Exception in consumerConfig is {} and the record is {}", thrownException.getMessage(), data);
         }));
         factory.setRetryTemplate(retryTemplate());
+        // Recovery Settings
         factory.setRecoveryCallback(context -> {
             if (context.getLastThrowable().getCause() instanceof RecoverableDataAccessException){
                 log.debug("Inside recoverable logic");
                 Arrays.asList(context.attributeNames()).forEach(attributeName -> {
                     log.info("Attribute name is :  {}", attributeName);
-                    log.info("Attribute Value is P{", context.getAttribute(attributeName));
+                    log.info("Attribute Value is {}", context.getAttribute(attributeName));
+                    //  record - по этому аттрибуту можно получить проблемную ConsumerRecord.
+                    // consumer - KafkaConsumer - который получает плохие сообщения.
+                    // exhausted - признак того, что retries кончились.
+                    ConsumerRecord<Integer, String> consumerRecord = (ConsumerRecord<Integer, String>) context.getAttribute("record");
+                    libraryEventsService.handleRecovery(consumerRecord);
                 });
             }else {
                 log.debug("Inside non-recoverable logic");
